@@ -1,0 +1,4 @@
+# Optional: only for regenerating outlines from source imagery.
+Pillow>=10
+numpy>=1.24
+scipy>=1.10

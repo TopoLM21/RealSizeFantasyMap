@@ -122,6 +122,6 @@ def extract(tiles, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tiles", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=ROOT / "data/coastline.json")
+    parser.add_argument("--output", type=Path, default=ROOT / "data/coastline-v4.json")
     args = parser.parse_args()
     extract(args.tiles, args.output)

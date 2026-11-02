@@ -113,7 +113,8 @@ class AtlasApp:
             scrollregion=self.sidebar_canvas.bbox("all")))
         self.label(sidebar, "01 / ИССЛЕДОВАНИЕ", GOLD, 9, anchor="w").pack(fill="x")
         self.label(sidebar, "Берега Тейвата", size=20, anchor="w").pack(fill="x", pady=(10, 5))
-        self.label(sidebar, "Снимок 4.0 · только суша и океан", MUTED, 9, anchor="w").pack(fill="x")
+        self.label(sidebar, self.coastline.get("subtitle", self.coastline["title"]),
+                   MUTED, 9, anchor="w").pack(fill="x")
         self.label(sidebar, "20 000 км", GOLD, 25, anchor="w").pack(fill="x", pady=(18, 0))
         self.label(sidebar, "ширина полушария на экваторе", MUTED, 9, anchor="w").pack(fill="x")
         tk.Frame(sidebar, bg="#2e414a", height=1).pack(fill="x", pady=18)
@@ -167,7 +168,9 @@ class AtlasApp:
         self.canvas.pack(fill="both", expand=True)
         legend = tk.Frame(main, bg=BG)
         legend.pack(fill="x", pady=9)
-        self.label(legend, "━ Берег   ┄ Край снимка (берег неизвестен)", MUTED, 9).pack(side="left")
+        legend_text = ("━ Берег   ┄ Край снимка (берег неизвестен)" if self.coastline.get("frontiers")
+                       else "━ Берег · приближённо по изображению")
+        self.label(legend, legend_text, MUTED, 9).pack(side="left")
         self.pointer_text = tk.StringVar(value="")
         tk.Label(legend, textvariable=self.pointer_text, fg=TEXT, bg=BG,
                  font=("DejaVu Sans", 9)).pack(side="right")
@@ -373,8 +376,7 @@ class AtlasApp:
 
     def load_demo(self):
         # Illustrative positions in this arbitrary planetary projection, not official POIs.
-        demo = [("Пример: Мондштадт", 2750, -5900), ("Пример: Ли Юэ", 1200, -1400),
-                ("Пример: Сумеру", -4100, -1500), ("Пример: Инадзума", 8300, 4000)]
+        demo = self.coastline.get("demo_markers", [])
         existing = {m["name"] for m in self.markers}
         for name, x, y in demo:
             if name not in existing and len(self.markers) < 1000:
@@ -479,9 +481,7 @@ class AtlasApp:
             px, py = v.screen(x, -9500)
             c.create_text(px, py, text=title, fill="#77959a", font=("DejaVu Sans", 12))
         if self.show_labels.get():
-            for text, x, y in (("ФОНТЕЙН", -6400, -7200), ("МОНДШТАДТ", 3400, -5200),
-                               ("ЛИ ЮЭ", 1800, -1700), ("СУМЕРУ", -4500, -1000),
-                               ("ИНАДЗУМА", 7200, 5000)):
+            for text, x, y in self.coastline.get("region_labels", []):
                 c.create_text(*v.screen(x, y), text=text, fill="#bdc4ae", font=("DejaVu Sans", 9))
         origin = self.selected_marker()
         if origin:
@@ -548,8 +548,9 @@ class AtlasApp:
             "Окружность сферы = 40 000 км. Второе полушарие — океан.\n"
             "Расстояния — кратчайшие дуги большого круга, без учёта рельефа.\n"
             "Проекция искажает размеры у полюсов; зум не меняет расстояния.\n\n"
-            "Контуры: упрощённый снимок игровой карты 4.0.\n"
-            "Пунктир обозначает обрезанный край снимка, а не известный берег.\n"
+            "Контуры извлечены из предоставленной карты 1024×1024.\n"
+            "Светлая береговая линия выделена из текстурированного фона.\n"
+            "Погрешность в несколько пикселей может составлять десятки километров.\n"
             "Демо-метки и подписи регионов расположены приблизительно.", parent=self.root)
 
     def close(self):
