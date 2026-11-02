@@ -1,7 +1,7 @@
-"""Extract vector land outlines from the supplied blue map, without generative edits.
+"""Extract vector land outlines from supplied line art or a textured blue map.
 
 This is a deterministic measurement of source pixels. The profile records crop,
-color thresholds, the reviewed strait correction and the source checksum.
+color/ink thresholds, any reviewed corrections and the source checksum.
 Preparation only: Pillow, NumPy and SciPy. The atlas itself needs none of these.
 """
 
@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 from collections import defaultdict
+from html import escape
 from pathlib import Path
 
 import numpy as np
@@ -24,21 +25,36 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def segment(source, profile):
-    """Separate land from the textured ocean; deliberately retain a clear strait."""
+    """Fill land while preserving the source's separations between closed regions."""
     if list(source.size) != profile["image_size"]:
         raise ValueError("Размер изображения не соответствует профилю обработки")
-    rgb = np.asarray(source.convert("RGB"), dtype=np.float64)
-    red, green, blue = np.moveaxis(rgb, 2, 0)
-    valid = np.zeros(red.shape, dtype=bool)
+    valid = np.zeros((source.height, source.width), dtype=bool)
     x1, y1, x2, y2 = profile["crop"]
     valid[y1:y2, x1:x2] = True
-    for x1, y1, x2, y2 in profile["exclude_rectangles"]:
+    for x1, y1, x2, y2 in profile.get("exclude_rectangles", []):
         valid[y1:y2, x1:x2] = False
-    mask = ((red > blue * profile["red_blue_ratio"]) &
-            (green > blue * profile["green_blue_ratio"]) & valid)
-    radius = profile["closing_radius_px"]
-    yy, xx = np.mgrid[-radius:radius + 1, -radius:radius + 1]
-    mask = ndi.binary_closing(mask, structure=xx * xx + yy * yy <= radius * radius)
+    mode = profile.get("mode", "color")
+    if mode == "line_art":
+        ink = (np.asarray(source.convert("L")) < profile["ink_threshold"]) & valid
+        # Only white regions enclosed by the drawing are land. Adding the ink to
+        # their interiors would merge islands sharing a thin drawn boundary.
+        white_regions, _ = ndi.label(~ink)
+        outside = np.unique(np.concatenate((white_regions[0], white_regions[-1],
+                                            white_regions[:, 0], white_regions[:, -1])))
+        mask = (white_regions > 0) & ~np.isin(white_regions, outside) & valid
+    elif mode == "color":
+        rgb = np.asarray(source.convert("RGB"), dtype=np.float64)
+        red, green, blue = np.moveaxis(rgb, 2, 0)
+        mask = ((red > blue * profile["red_blue_ratio"]) &
+                (green > blue * profile["green_blue_ratio"]) & valid)
+    else:
+        raise ValueError(f"Неизвестный режим выделения: {mode}")
+    radius = profile.get("closing_radius_px", 0)
+    if radius:
+        if mode == "line_art":
+            raise ValueError("Для чистого рисунка замыкание отключено, чтобы не соединять острова")
+        yy, xx = np.mgrid[-radius:radius + 1, -radius:radius + 1]
+        mask = ndi.binary_closing(mask, structure=xx * xx + yy * yy <= radius * radius)
     cuts = Image.new("1", source.size)
     draw = ImageDraw.Draw(cuts)
     for cut in profile.get("water_cuts", []):
@@ -109,19 +125,22 @@ def build_data(rings, profile, source_hash):
         raise ValueError("Высота карты не помещается в выбранное полушарие")
     return {
         "version": 1, "map_id": "user-map-" + source_hash[:12],
-        "title": "Тейват · карта пользователя", "subtitle": "Ваша карта · только суша и океан",
-        "source": "Предоставленное пользователем изображение 1024×1024; версия игры не установлена",
+        "title": "Тейват · карта пользователя",
+        "subtitle": profile.get("subtitle", "Ваша карта · только суша и океан"),
+        "source": profile.get("source_description",
+            "Предоставленное пользователем изображение 1024×1024; версия игры не установлена"),
         "source_sha256": source_hash,
-        "note": "Приближённая векторизация изображения; шум и мелкие острова отфильтрованы. "
-                "Узкий пролив сохранён по исходнику ручной направляющей. "
-                "Актуальность и официальный статус исходника независимо не проверялись.",
+        "note": profile.get("note", "Приближённая векторизация изображения по параметрам профиля. "
+                            "Актуальность и официальный статус исходника независимо не проверялись."),
         "width_km": profile["width_km"], "source_bounds_px": bounds,
         "km_per_source_pixel": unit, "polygons": polygons, "frontiers": [],
         "region_labels": [[name, *project((x, y))] for name, x, y in profile["region_labels_px"]],
         "demo_markers": [[name, *project((x, y))] for name, x, y in profile["demo_markers_px"]],
-        "processing": {"minimum_land_area_px": profile["minimum_land_area_px"],
+        "processing": {"mode": profile.get("mode", "color"),
+                       "ink_threshold": profile.get("ink_threshold"),
+                       "minimum_land_area_px": profile["minimum_land_area_px"],
                        "simplify_tolerance_px": profile["simplify_tolerance_px"],
-                       "closing_radius_px": profile["closing_radius_px"],
+                       "closing_radius_px": profile.get("closing_radius_px", 0),
                        "reviewed_water_cut_count": len(profile.get("water_cuts", []))},
     }
 
@@ -140,7 +159,7 @@ def write_artifacts(rings, mask, data, directory):
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x1 - 15} {y1 - 15} '
            f'{x2 - x1 + 30} {y2 - y1 + 30}">\n'
            '  <title>Береговая линия по предоставленной карте Тейвата</title>\n'
-           '  <desc>Приближённая векторизация; декоративная рамка и роза ветров исключены.</desc>\n'
+           f'  <desc>{escape(data["note"])}</desc>\n'
            '  <g fill="none" stroke="#172c36" stroke-width="1.2" stroke-linejoin="round">\n' +
            "\n".join(paths) + '\n  </g>\n</svg>\n')
     (directory / "coastline.svg").write_text(svg, encoding="utf-8")

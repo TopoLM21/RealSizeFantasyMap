@@ -29,10 +29,10 @@ class UserCoastlineTests(unittest.TestCase):
         return any(contains(point, ring) for ring in self.data["polygons"])
 
     def test_land_is_retained_but_decoration_and_ocean_are_not(self):
-        for point in [(520, 160), (550, 420), (500, 650), (803, 793)]:
+        for point in [(520, 160), (500, 390), (560, 400), (500, 650), (803, 793), (606, 108)]:
             with self.subTest(land=point):
                 self.assertTrue(self.source_is_land(*point))
-        for point in [(850, 167), (40, 500), (512, 805), (200, 200), (599, 459)]:
+        for point in [(850, 167), (40, 500), (512, 805), (200, 200), (595, 447), (532, 400)]:
             with self.subTest(water=point):
                 self.assertFalse(self.source_is_land(*point))
 
@@ -40,8 +40,11 @@ class UserCoastlineTests(unittest.TestCase):
         for ring in self.data["polygons"]:
             self.assertGreaterEqual(len(ring), 4)
             self.assertEqual(ring[0], ring[-1])
-        self.assertAlmostEqual(self.data["km_per_source_pixel"], 20_000 / 776)
-        self.assertTrue(self.data["source_sha256"].startswith("de6eac28"))
+        self.assertAlmostEqual(self.data["km_per_source_pixel"], 20_000 / 767)
+        self.assertTrue(self.data["source_sha256"].startswith("e1fe7ba5"))
+        self.assertEqual(self.data["processing"]["mode"], "line_art")
+        self.assertEqual(self.data["processing"]["closing_radius_px"], 0)
+        self.assertEqual(self.data["processing"]["reviewed_water_cut_count"], 0)
 
     def test_svg_and_geojson_represent_the_same_land(self):
         svg = ET.parse(DATA / "coastline.svg")
