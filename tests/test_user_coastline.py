@@ -41,10 +41,15 @@ class UserCoastlineTests(unittest.TestCase):
             self.assertGreaterEqual(len(ring), 4)
             self.assertEqual(ring[0], ring[-1])
         self.assertAlmostEqual(self.data["km_per_source_pixel"], 20_000 / 767)
-        self.assertTrue(self.data["source_sha256"].startswith("e1fe7ba5"))
+        self.assertTrue(self.data["source_sha256"].startswith("07a8653c"))
         self.assertEqual(self.data["processing"]["mode"], "line_art")
         self.assertEqual(self.data["processing"]["closing_radius_px"], 0)
         self.assertEqual(self.data["processing"]["reviewed_water_cut_count"], 0)
+
+    def test_corrected_mondstadt_inlet_is_water_and_its_island_remains(self):
+        self.assertFalse(self.source_is_land(730, 455))
+        self.assertFalse(self.source_is_land(729, 459))
+        self.assertTrue(self.source_is_land(731, 465))
 
     def test_svg_and_geojson_represent_the_same_land(self):
         svg = ET.parse(DATA / "coastline.svg")

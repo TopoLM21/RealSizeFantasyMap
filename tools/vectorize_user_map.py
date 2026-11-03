@@ -28,6 +28,10 @@ def segment(source, profile):
     """Fill land while preserving the source's separations between closed regions."""
     if list(source.size) != profile["image_size"]:
         raise ValueError("Размер изображения не соответствует профилю обработки")
+    # Transparent pixels often have black hidden RGB values. Composite first so
+    # RGBA, LA and indexed PNG transparency behave like ink on white paper.
+    source = Image.alpha_composite(Image.new("RGBA", source.size, "white"),
+                                   source.convert("RGBA")).convert("RGB")
     valid = np.zeros((source.height, source.width), dtype=bool)
     x1, y1, x2, y2 = profile["crop"]
     valid[y1:y2, x1:x2] = True

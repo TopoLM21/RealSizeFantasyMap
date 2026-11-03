@@ -45,6 +45,22 @@ class LineArtTests(unittest.TestCase):
         self.assertTrue(mask[22, 22])
         self.assertEqual(int(mask.sum()), 9)
 
+    def test_transparent_png_formats_match_ink_on_white(self):
+        from PIL import Image, ImageDraw
+        import numpy as np
+        # Black at alpha 165 is gray 90 over white, including in palette PNGs.
+        self.draw.rectangle((10, 10, 30, 40), outline=(90, 90, 90), width=2)
+        expected = self.segment(self.source, self.profile)
+        rgba = Image.new("RGBA", self.source.size, (240, 20, 80, 0))
+        ImageDraw.Draw(rgba).rectangle((10, 10, 30, 40), outline=(0, 0, 0, 165), width=2)
+        indexed = Image.new("P", self.source.size, color=0)
+        indexed.putpalette([0, 0, 0] * 256)
+        indexed.info["transparency"] = bytes([0, 165] + [0] * 254)
+        ImageDraw.Draw(indexed).rectangle((10, 10, 30, 40), outline=1, width=2)
+        for image in (rgba, rgba.convert("LA"), indexed):
+            with self.subTest(mode=image.mode):
+                np.testing.assert_array_equal(self.segment(image, self.profile), expected)
+
 
 if __name__ == "__main__":
     unittest.main()
