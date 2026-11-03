@@ -4,43 +4,490 @@
   "name_reference": "https://act.hoyolab.com/ys/app/interactive-map/index.html",
   "position_note": "Первый набор ориентиров: координаты вручную приблизительно привязаны к рисунку пользователя, а не импортированы из игровой системы координат. Географическая полнота не заявляется. null означает, что место ещё не привязано; такие точки не рисуются на карте.",
   "places": [
-    {"id":"mondstadt","name":"Мондштадт","region":"Мондштадт","kind":"city","aliases":["Mondstadt"],"source_pixel":[731,465]},
-    {"id":"liyue-harbor","name":"Гавань Ли Юэ","region":"Ли Юэ","kind":"city","aliases":["Liyue Harbor"],"source_pixel":[681,554]},
-    {"id":"inazuma-city","name":"Инадзума","region":"Инадзума","kind":"city","aliases":["Inazuma City"],"source_pixel":[864,661]},
-    {"id":"sumeru-city","name":"Город Сумеру","region":"Сумеру","kind":"city","aliases":["Sumeru City"],"source_pixel":[593,588]},
-    {"id":"court-fontaine","name":"Кур-де-Фонтейн","region":"Фонтейн","kind":"city","aliases":["Court of Fontaine"],"source_pixel":[540,392]},
-    {"id":"springvale","name":"Спрингвейл","region":"Мондштадт","kind":"town","aliases":["Springvale"],"source_pixel":[715,494]},
-    {"id":"dawn-winery","name":"Винокурня «Рассвет»","region":"Мондштадт","kind":"landmark","aliases":["Dawn Winery"],"source_pixel":[689,509]},
-    {"id":"dornman-port","name":"Порт Дорнман","region":"Мондштадт","kind":"port","aliases":["Dornman Port"],"source_pixel":[711,413]},
-    {"id":"qingce","name":"Деревня Цинцэ","region":"Ли Юэ","kind":"town","aliases":["Qingce Village"],"source_pixel":[659,504]},
-    {"id":"qiaoying","name":"Деревня Цяоин","region":"Ли Юэ","kind":"town","aliases":["Qiaoying Village"],"source_pixel":[628,488]},
-    {"id":"yilong-wharf","name":"Порт Илун","region":"Ли Юэ","kind":"port","aliases":["Yilong Wharf"],"source_pixel":[618,497]},
-    {"id":"wangshu","name":"Постоялый двор «Ваншу»","region":"Ли Юэ","kind":"landmark","aliases":["Wangshu Inn"],"source_pixel":[675,529]},
-    {"id":"gandharva","name":"Гандхарва","region":"Сумеру","kind":"town","aliases":["Gandharva Ville"],"source_pixel":[613,588]},
-    {"id":"vimara","name":"Деревня Вимара","region":"Сумеру","kind":"town","aliases":["Vimara Village"],"source_pixel":[605,607]},
-    {"id":"aaru","name":"Деревня Аару","region":"Сумеру","kind":"town","aliases":["Aaru Village"],"source_pixel":[520,609]},
-    {"id":"caravan-ribat","name":"Караван-рибат","region":"Сумеру","kind":"town","aliases":["Caravan Ribat"],"source_pixel":[554,600]},
-    {"id":"port-ormos","name":"Порт-Ормос","region":"Сумеру","kind":"port","aliases":["Port Ormos"],"source_pixel":[606,625]},
-    {"id":"bayda-port","name":"Порт Байда","region":"Сумеру","kind":"port","aliases":["Bayda Harbor"],"source_pixel":[572,550]},
-    {"id":"ritou","name":"Рито","region":"Инадзума","kind":"port","aliases":["Ritou"],"source_pixel":[846,651]},
-    {"id":"bourou","name":"Деревня Боро","region":"Инадзума","kind":"town","aliases":["Bourou Village"],"source_pixel":[731,701]},
-    {"id":"sangonomiya","name":"Сангономия","region":"Инадзума","kind":"landmark","aliases":["Sangonomiya Shrine"],"source_pixel":[733,693]},
-    {"id":"romaritime","name":"Порт Ромарин","region":"Фонтейн","kind":"port","aliases":["Romaritime Harbor"],"source_pixel":[527,481]},
-    {"id":"poisson","name":"Пуассон","region":"Фонтейн","kind":"town","aliases":["Poisson"],"source_pixel":[551,454]},
-    {"id":"petrichor","name":"Петрикор","region":"Фонтейн","kind":"town","aliases":["Petrichor"],"source_pixel":[539,508]},
-    {"id":"sacred-flame","name":"Стадион Священного пламени","region":"Натлан","kind":"landmark","aliases":["Stadium of the Sacred Flame"],"source_pixel":[370,614]},
-    {"id":"echoes","name":"Дети Эха","region":"Натлан","kind":"town","aliases":["Children of Echoes"],"source_pixel":[386,603]},
-    {"id":"canopy","name":"Потомки Крон","region":"Натлан","kind":"town","aliases":["Scions of the Canopy"],"source_pixel":[346,634]},
-    {"id":"deshret","name":"Гробница царя Дешрета","region":"Сумеру","kind":"landmark","aliases":["Mausoleum of King Deshret"],"source_pixel":[495,575]},
-    {"id":"dragonspine","name":"Драконий хребет","region":"Мондштадт","kind":"landmark","aliases":["Dragonspine"],"source_pixel":[709,535]},
-    {"id":"chasm","name":"Разлом","region":"Ли Юэ","kind":"landmark","aliases":["The Chasm"],"source_pixel":[620,566]},
-    {"id":"stormterror","name":"Логово Ужаса Бури","region":"Мондштадт","kind":"landmark","aliases":["Stormterror's Lair"],"source_pixel":[642,474]},
-    {"id":"jueyun","name":"Заоблачный предел","region":"Ли Юэ","kind":"landmark","aliases":["Jueyun Karst"],"source_pixel":[638,540]},
-    {"id":"chenyu","name":"Долина Чэньюй","region":"Ли Юэ","kind":"landmark","aliases":["Chenyu Vale"],"source_pixel":[640,509]},
-    {"id":"snezhnograd","name":"Снежноград","region":"Снежная","kind":"city","aliases":["Snezhnograd"],"source_pixel":null,"source":"https://wiki.hoyolab.com/pc/genshin/entry/7478?lang=en-us"},
-    {"id":"glupov","name":"Глупов","region":"Снежная","kind":"town","aliases":["Glupov"],"source_pixel":null,"source":"https://wiki.hoyolab.com/pc/genshin/entry/7478?lang=en-us"},
-    {"id":"nasha","name":"Нашгород","region":"Нод-Край","kind":"town","aliases":["Nasha Town","Наша"],"source_pixel":null,"source":"https://wiki.hoyolab.com/m/genshin/entry/7623?lang=en-us"},
-    {"id":"kuuvahki-bureau","name":"Экспериментальное конструкторское бюро Куувяки","region":"Нод-Край","kind":"landmark","aliases":["Kuuvahki Experimental Design Bureau"],"source_pixel":null,"source":"https://wiki.hoyolab.com/pc/genshin/entry/9300?lang=en-us"},
-    {"id":"frostmoon","name":"Анклав Морозной Луны","region":"Нод-Край","kind":"landmark","aliases":["Frostmoon Enclave"],"source_pixel":null,"source":"https://wiki.hoyolab.com/pc/genshin/entry/9002?lang=en-us"}
+    {
+      "id": "mondstadt",
+      "name": "Мондштадт",
+      "region": "Мондштадт",
+      "kind": "city",
+      "aliases": [
+        "Mondstadt"
+      ],
+      "source_pixel": [
+        731,
+        465
+      ]
+    },
+    {
+      "id": "liyue-harbor",
+      "name": "Гавань Ли Юэ",
+      "region": "Ли Юэ",
+      "kind": "city",
+      "aliases": [
+        "Liyue Harbor"
+      ],
+      "source_pixel": [
+        681,
+        554
+      ]
+    },
+    {
+      "id": "inazuma-city",
+      "name": "Инадзума",
+      "region": "Инадзума",
+      "kind": "city",
+      "aliases": [
+        "Inazuma City"
+      ],
+      "source_pixel": [
+        864,
+        661
+      ]
+    },
+    {
+      "id": "sumeru-city",
+      "name": "Город Сумеру",
+      "region": "Сумеру",
+      "kind": "city",
+      "aliases": [
+        "Sumeru City"
+      ],
+      "source_pixel": [
+        593,
+        588
+      ]
+    },
+    {
+      "id": "court-fontaine",
+      "name": "Кур-де-Фонтейн",
+      "region": "Фонтейн",
+      "kind": "city",
+      "aliases": [
+        "Court of Fontaine"
+      ],
+      "source_pixel": [
+        540,
+        392
+      ]
+    },
+    {
+      "id": "springvale",
+      "name": "Спрингвейл",
+      "region": "Мондштадт",
+      "kind": "town",
+      "aliases": [
+        "Springvale"
+      ],
+      "source_pixel": [
+        715,
+        494
+      ]
+    },
+    {
+      "id": "dawn-winery",
+      "name": "Винокурня «Рассвет»",
+      "region": "Мондштадт",
+      "kind": "landmark",
+      "aliases": [
+        "Dawn Winery"
+      ],
+      "source_pixel": [
+        689,
+        509
+      ]
+    },
+    {
+      "id": "dornman-port",
+      "name": "Порт Дорнман",
+      "region": "Мондштадт",
+      "kind": "port",
+      "aliases": [
+        "Dornman Port"
+      ],
+      "source_pixel": [
+        711,
+        413
+      ]
+    },
+    {
+      "id": "qingce",
+      "name": "Деревня Цинцэ",
+      "region": "Ли Юэ",
+      "kind": "town",
+      "aliases": [
+        "Qingce Village"
+      ],
+      "source_pixel": [
+        659,
+        504
+      ]
+    },
+    {
+      "id": "qiaoying",
+      "name": "Деревня Цяоин",
+      "region": "Ли Юэ",
+      "kind": "town",
+      "aliases": [
+        "Qiaoying Village"
+      ],
+      "source_pixel": [
+        628,
+        488
+      ]
+    },
+    {
+      "id": "yilong-wharf",
+      "name": "Порт Илун",
+      "region": "Ли Юэ",
+      "kind": "port",
+      "aliases": [
+        "Yilong Wharf"
+      ],
+      "source_pixel": [
+        618,
+        497
+      ]
+    },
+    {
+      "id": "wangshu",
+      "name": "Постоялый двор «Ваншу»",
+      "region": "Ли Юэ",
+      "kind": "landmark",
+      "aliases": [
+        "Wangshu Inn"
+      ],
+      "source_pixel": [
+        675,
+        529
+      ]
+    },
+    {
+      "id": "gandharva",
+      "name": "Гандхарва",
+      "region": "Сумеру",
+      "kind": "town",
+      "aliases": [
+        "Gandharva Ville"
+      ],
+      "source_pixel": [
+        613,
+        588
+      ]
+    },
+    {
+      "id": "vimara",
+      "name": "Деревня Вимара",
+      "region": "Сумеру",
+      "kind": "town",
+      "aliases": [
+        "Vimara Village"
+      ],
+      "source_pixel": [
+        605,
+        607
+      ]
+    },
+    {
+      "id": "aaru",
+      "name": "Деревня Аару",
+      "region": "Сумеру",
+      "kind": "town",
+      "aliases": [
+        "Aaru Village"
+      ],
+      "source_pixel": [
+        520,
+        609
+      ]
+    },
+    {
+      "id": "caravan-ribat",
+      "name": "Караван-рибат",
+      "region": "Сумеру",
+      "kind": "town",
+      "aliases": [
+        "Caravan Ribat"
+      ],
+      "source_pixel": [
+        554,
+        600
+      ]
+    },
+    {
+      "id": "port-ormos",
+      "name": "Порт-Ормос",
+      "region": "Сумеру",
+      "kind": "port",
+      "aliases": [
+        "Port Ormos"
+      ],
+      "source_pixel": [
+        606,
+        625
+      ]
+    },
+    {
+      "id": "bayda-port",
+      "name": "Порт Байда",
+      "region": "Сумеру",
+      "kind": "port",
+      "aliases": [
+        "Bayda Harbor"
+      ],
+      "source_pixel": [
+        572,
+        550
+      ]
+    },
+    {
+      "id": "ritou",
+      "name": "Рито",
+      "region": "Инадзума",
+      "kind": "port",
+      "aliases": [
+        "Ritou"
+      ],
+      "source_pixel": [
+        846,
+        651
+      ]
+    },
+    {
+      "id": "bourou",
+      "name": "Деревня Боро",
+      "region": "Инадзума",
+      "kind": "town",
+      "aliases": [
+        "Bourou Village"
+      ],
+      "source_pixel": [
+        731,
+        701
+      ]
+    },
+    {
+      "id": "sangonomiya",
+      "name": "Сангономия",
+      "region": "Инадзума",
+      "kind": "landmark",
+      "aliases": [
+        "Sangonomiya Shrine"
+      ],
+      "source_pixel": [
+        733,
+        693
+      ]
+    },
+    {
+      "id": "romaritime",
+      "name": "Порт Ромарин",
+      "region": "Фонтейн",
+      "kind": "port",
+      "aliases": [
+        "Romaritime Harbor"
+      ],
+      "source_pixel": [
+        527,
+        481
+      ]
+    },
+    {
+      "id": "poisson",
+      "name": "Пуассон",
+      "region": "Фонтейн",
+      "kind": "town",
+      "aliases": [
+        "Poisson"
+      ],
+      "source_pixel": [
+        551,
+        454
+      ]
+    },
+    {
+      "id": "petrichor",
+      "name": "Петрикор",
+      "region": "Фонтейн",
+      "kind": "town",
+      "aliases": [
+        "Petrichor"
+      ],
+      "source_pixel": [
+        539,
+        508
+      ]
+    },
+    {
+      "id": "sacred-flame",
+      "name": "Стадион Священного пламени",
+      "region": "Натлан",
+      "kind": "landmark",
+      "aliases": [
+        "Stadium of the Sacred Flame"
+      ],
+      "source_pixel": [
+        370,
+        614
+      ]
+    },
+    {
+      "id": "echoes",
+      "name": "Дети Эха",
+      "region": "Натлан",
+      "kind": "town",
+      "aliases": [
+        "Children of Echoes"
+      ],
+      "source_pixel": [
+        386,
+        603
+      ]
+    },
+    {
+      "id": "canopy",
+      "name": "Потомки Крон",
+      "region": "Натлан",
+      "kind": "town",
+      "aliases": [
+        "Scions of the Canopy"
+      ],
+      "source_pixel": [
+        346,
+        634
+      ]
+    },
+    {
+      "id": "deshret",
+      "name": "Гробница царя Дешрета",
+      "region": "Сумеру",
+      "kind": "landmark",
+      "aliases": [
+        "Mausoleum of King Deshret"
+      ],
+      "source_pixel": [
+        495,
+        575
+      ]
+    },
+    {
+      "id": "dragonspine",
+      "name": "Драконий хребет",
+      "region": "Мондштадт",
+      "kind": "landmark",
+      "aliases": [
+        "Dragonspine"
+      ],
+      "source_pixel": [
+        709,
+        535
+      ]
+    },
+    {
+      "id": "chasm",
+      "name": "Разлом",
+      "region": "Ли Юэ",
+      "kind": "landmark",
+      "aliases": [
+        "The Chasm"
+      ],
+      "source_pixel": [
+        620,
+        566
+      ]
+    },
+    {
+      "id": "stormterror",
+      "name": "Логово Ужаса Бури",
+      "region": "Мондштадт",
+      "kind": "landmark",
+      "aliases": [
+        "Stormterror's Lair"
+      ],
+      "source_pixel": [
+        642,
+        474
+      ]
+    },
+    {
+      "id": "jueyun",
+      "name": "Заоблачный предел",
+      "region": "Ли Юэ",
+      "kind": "landmark",
+      "aliases": [
+        "Jueyun Karst"
+      ],
+      "source_pixel": [
+        638,
+        540
+      ]
+    },
+    {
+      "id": "chenyu",
+      "name": "Долина Чэньюй",
+      "region": "Ли Юэ",
+      "kind": "landmark",
+      "aliases": [
+        "Chenyu Vale"
+      ],
+      "source_pixel": [
+        640,
+        509
+      ]
+    },
+    {
+      "id": "snezhnograd",
+      "name": "Снежноград",
+      "region": "Снежная",
+      "kind": "city",
+      "aliases": [
+        "Snezhnograd"
+      ],
+      "source_pixel": null,
+      "source": "https://wiki.hoyolab.com/pc/genshin/entry/7478?lang=en-us"
+    },
+    {
+      "id": "glupov",
+      "name": "Глупов",
+      "region": "Снежная",
+      "kind": "town",
+      "aliases": [
+        "Glupov"
+      ],
+      "source_pixel": null,
+      "source": "https://wiki.hoyolab.com/pc/genshin/entry/7478?lang=en-us"
+    },
+    {
+      "id": "nasha",
+      "name": "Нашгород",
+      "region": "Нод-Край",
+      "kind": "town",
+      "aliases": [
+        "Nasha Town",
+        "Наша"
+      ],
+      "source_pixel": null,
+      "source": "https://wiki.hoyolab.com/m/genshin/entry/7623?lang=en-us"
+    },
+    {
+      "id": "kuuvahki-bureau",
+      "name": "Экспериментальное конструкторское бюро Куувяки",
+      "region": "Нод-Край",
+      "kind": "landmark",
+      "aliases": [
+        "Kuuvahki Experimental Design Bureau"
+      ],
+      "source_pixel": null,
+      "source": "https://wiki.hoyolab.com/pc/genshin/entry/9300?lang=en-us"
+    },
+    {
+      "id": "frostmoon",
+      "name": "Анклав Морозной Луны",
+      "region": "Нод-Край",
+      "kind": "landmark",
+      "aliases": [
+        "Frostmoon Enclave"
+      ],
+      "source_pixel": null,
+      "source": "https://wiki.hoyolab.com/pc/genshin/entry/9002?lang=en-us"
+    }
   ]
 }

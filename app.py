@@ -16,7 +16,8 @@ from geometry import (KM_PER_DEGREE, WORLD_BOUNDS, Viewport, distance_km,
 from storage import load_markers, save_markers
 from coastline_style import smooth_coastline
 from map_renderer import CoastRenderer
-from places import KINDS, load_places, search_places
+from places import (KINDS, load_places, search_places, move_place,
+                    set_place_source_point, save_place_positions)
 
 ROOT = Path(__file__).resolve().parent
 BG = "#101c27"
@@ -34,14 +35,23 @@ def km(value):
 
 
 class AtlasApp:
-    def __init__(self, root, markers_path=None, demo=False):
+    def __init__(self, root, markers_path=None, demo=False, places_path=None):
         self.root = root
         self.markers_path = markers_path or Path.home() / ".realsizefantasymap" / "markers.json"
         self.coastline = json.loads((ROOT / "data/coastline.json").read_text(encoding="utf-8"))
         self.smooth_polygons = smooth_coastline(self.coastline["polygons"],
                                                self.coastline["km_per_source_pixel"])
         self.coast_renderer = CoastRenderer()
-        self.places = load_places(ROOT / "data/places.json", self.coastline)
+        self.places_path = Path(places_path) if places_path is not None else ROOT / "data/places.json"
+        self.places = load_places(self.places_path, self.coastline)
+        self.saved_place_states = {p["id"]: self.place_state(p) for p in self.places}
+        self.poi_dirty_ids = set()
+        self.poi_undo = []
+        self.editing_place_id = None
+        self.placing_place_id = None
+        self.drag_place_id = None
+        self.drag_place_before = None
+        self.pan_anchor = None
         self.visible_places = []
         self.pending_place_name = None
         self.markers = []
@@ -51,6 +61,8 @@ class AtlasApp:
         self.show_labels = tk.BooleanVar(value=False)
         self.show_places = tk.BooleanVar(value=True)
         self.smooth_coast = tk.BooleanVar(value=True)
+        self.edit_places = tk.BooleanVar(value=False)
+        self.poi_editor_status = tk.StringVar(value="Редактор POI")
         self.view = Viewport()
         self.press = None
         self.dragged = False
@@ -134,6 +146,10 @@ class AtlasApp:
         self.add_button.pack(fill="x")
         self.label(sidebar, "Или двойной щелчок по карте", MUTED, 9).pack(pady=(7, 14))
         self.button(sidebar, "Места · поиск и подписи", self.show_places_dialog).pack(fill="x", pady=(0, 14))
+        tk.Checkbutton(sidebar, text="Спецрежим: редактор POI", variable=self.edit_places,
+                       command=self.toggle_place_editor, bg=PANEL, fg=GOLD, selectcolor=BG,
+                       activebackground=PANEL, activeforeground=GOLD,
+                       font=("DejaVu Sans", 10)).pack(anchor="w", pady=(0, 12))
         self.label(sidebar, "02 / РАССТОЯНИЯ ОТ МЕТКИ", GOLD, 9, anchor="w").pack(fill="x")
         self.selected_text = tk.StringVar(value="Выберите точку отсчёта")
         tk.Label(sidebar, textvariable=self.selected_text, wraplength=270, justify="left",
@@ -180,6 +196,15 @@ class AtlasApp:
         self.button(toolbar, "+", lambda: self.zoom_center(1.3)).pack(side="right")
         self.canvas = tk.Canvas(main, bg=BG, highlightthickness=0, cursor="fleur")
         self.canvas.pack(fill="both", expand=True)
+        self.poi_editor_bar = tk.Frame(main, bg="#2d352c", padx=10, pady=7)
+        tk.Label(self.poi_editor_bar, textvariable=self.poi_editor_status, bg="#2d352c",
+                 fg=GOLD, anchor="w", justify="left", wraplength=600,
+                 font=("DejaVu Sans", 10)).pack(fill="x", pady=(0, 5))
+        edit_actions = tk.Frame(self.poi_editor_bar, bg="#2d352c")
+        edit_actions.pack(fill="x")
+        self.button(edit_actions, "Сохранить POI", self.save_places_edits, accent=True).pack(side="left")
+        self.button(edit_actions, "Отменить шаг", self.undo_place_edit).pack(side="left", padx=8)
+        self.button(edit_actions, "Готово", self.finish_place_edit).pack(side="left")
         legend = tk.Frame(main, bg=BG)
         legend.pack(fill="x", pady=9)
         legend_text = ("━ Берег   ┄ Край снимка (берег неизвестен)" if self.coastline.get("frontiers")
@@ -200,15 +225,21 @@ class AtlasApp:
         self.canvas.bind("<B1-Motion>", self.mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.mouse_up)
         self.canvas.bind("<Double-Button-1>", self.double_click)
-        self.canvas.bind("<Button-3>", self.right_click)
+        self.canvas.bind("<Button-3>", self.right_mouse_down)
+        self.canvas.bind("<B3-Motion>", self.pan_with_secondary_button)
+        self.canvas.bind("<ButtonRelease-3>", lambda e: setattr(self, "pan_anchor", None))
+        self.canvas.bind("<Button-2>", lambda e: setattr(self, "pan_anchor", (e.x, e.y)))
+        self.canvas.bind("<B2-Motion>", self.pan_with_secondary_button)
+        self.canvas.bind("<ButtonRelease-2>", lambda e: setattr(self, "pan_anchor", None))
         self.canvas.bind("<Motion>", self.pointer_move)
         self.canvas.bind("<MouseWheel>", self.wheel)
         self.canvas.bind("<Button-4>", self.wheel)
         self.canvas.bind("<Button-5>", self.wheel)
-        self.root.bind("<Escape>", lambda e: self.cancel_add())
+        self.root.bind("<Escape>", self.escape_action)
         self.root.bind("<Delete>", lambda e: self.delete_selected())
         self.root.bind("<Key-f>", lambda e: self.fit("teyvat"))
-        self.root.bind("<Control-s>", lambda e: self.persist())
+        self.root.bind("<Control-s>", self.save_shortcut)
+        self.root.bind("<Control-z>", lambda e: self.undo_place_edit() if self.edit_places.get() else None)
         self.root.bind("<Key-plus>", lambda e: self.zoom_center(1.3))
         self.root.bind("<Key-minus>", lambda e: self.zoom_center(1 / 1.3))
 
@@ -239,6 +270,13 @@ class AtlasApp:
         self.press = (event.x, event.y)
         self.last_mouse = self.press
         self.dragged = False
+        if self.edit_places.get() and self.placing_place_id is None:
+            place = self.hit_place(event.x, event.y)
+            if place:
+                self.editing_place_id = self.drag_place_id = place["id"]
+                self.drag_place_before = self.place_state(place)
+                self.refresh_place_editor()
+                self.schedule_render()
 
     def mouse_drag(self, event):
         if self.press is None:
@@ -246,12 +284,50 @@ class AtlasApp:
         if math.hypot(event.x - self.press[0], event.y - self.press[1]) > 4:
             self.dragged = True
         if self.dragged:
-            self.view.pan(event.x - self.last_mouse[0], event.y - self.last_mouse[1])
+            if self.edit_places.get() and self.drag_place_id:
+                place = self.place_by_id(self.drag_place_id)
+                try:
+                    move_place(place, *self.view.world(event.x, event.y), self.coastline)
+                    self.refresh_place_editor()
+                except ValueError as exc:
+                    self.status.set(str(exc))
+            else:
+                self.view.pan(event.x - self.last_mouse[0], event.y - self.last_mouse[1])
             self.schedule_render()
         self.last_mouse = (event.x, event.y)
 
     def mouse_up(self, event):
         if self.press is None:
+            return
+        if self.edit_places.get():
+            if self.drag_place_id:
+                place = self.place_by_id(self.drag_place_id)
+                if self.dragged:
+                    try:
+                        move_place(place, *self.view.world(event.x, event.y), self.coastline)
+                    except ValueError:
+                        set_place_source_point(place, self.drag_place_before["source_pixel"], self.coastline,
+                                               self.drag_place_before["position_accuracy"])
+                if self.place_state(place) != self.drag_place_before:
+                    self.poi_undo.append((place["id"], self.drag_place_before))
+                    self.poi_undo = self.poi_undo[-100:]
+            elif not self.dragged and self.placing_place_id:
+                place = self.place_by_id(self.placing_place_id)
+                before = self.place_state(place)
+                try:
+                    move_place(place, *self.view.world(event.x, event.y), self.coastline)
+                except ValueError as exc:
+                    self.status.set(str(exc))
+                else:
+                    if self.place_state(place) != before:
+                        self.poi_undo.append((place["id"], before))
+                        self.poi_undo = self.poi_undo[-100:]
+                    self.editing_place_id = place["id"]
+                    self.placing_place_id = None
+            self.drag_place_id = self.drag_place_before = None
+            self.press = None
+            self.refresh_place_editor()
+            self.schedule_render()
             return
         if not self.dragged:
             hit = self.hit_marker(event.x, event.y)
@@ -268,6 +344,8 @@ class AtlasApp:
         self.press = None
 
     def double_click(self, event):
+        if self.edit_places.get():
+            return "break"
         self.press = None
         if not self.hit_marker(event.x, event.y):
             self.add_at(event.x, event.y)
@@ -284,6 +362,139 @@ class AtlasApp:
                 menu.tk_popup(event.x_root, event.y_root)
             finally:
                 menu.grab_release()
+
+    def right_mouse_down(self, event):
+        if self.edit_places.get():
+            self.pan_anchor = (event.x, event.y)
+        else:
+            self.right_click(event)
+
+    def pan_with_secondary_button(self, event):
+        if self.pan_anchor is not None:
+            self.view.pan(event.x - self.pan_anchor[0], event.y - self.pan_anchor[1])
+            self.pan_anchor = (event.x, event.y)
+            self.schedule_render()
+
+    def place_by_id(self, ident):
+        return next((p for p in self.places if p["id"] == ident), None)
+
+    @staticmethod
+    def place_state(place):
+        point = place.get("source_pixel")
+        return {"source_pixel": list(point) if point is not None else None,
+                "position_accuracy": place["position_accuracy"]}
+
+    def hit_place(self, sx, sy):
+        candidates = []
+        pool = self.places if self.edit_places.get() else self.visible_places
+        for place in pool:
+            if place["x"] is None:
+                continue
+            px, py = self.view.screen(place["x"], place["y"])
+            distance = math.hypot(px - sx, py - sy)
+            if distance <= 12:
+                candidates.append((place["id"] != self.editing_place_id, distance, place["id"], place))
+        return min(candidates)[-1] if candidates else None
+
+    def toggle_place_editor(self):
+        self.cancel_place_action()
+        if self.edit_places.get():
+            self.cancel_add()
+            self.show_places.set(True)
+        self.refresh_place_editor()
+        self.schedule_render()
+
+    def refresh_place_editor(self):
+        self.poi_dirty_ids = {p["id"] for p in self.places
+                              if self.place_state(p) != self.saved_place_states.get(p["id"])}
+        place = self.place_by_id(self.editing_place_id)
+        text = "Редактор POI" if self.edit_places.get() else "Несохранённые правки POI"
+        if place:
+            text += " · " + place["name"]
+        if self.placing_place_id:
+            text += " · щёлкните, куда поставить точку (Esc — отмена)"
+        else:
+            text += f" · изменено: {len(self.poi_dirty_ids)}"
+        self.poi_editor_status.set(text)
+        if self.edit_places.get() or self.poi_dirty_ids:
+            self.poi_editor_bar.pack(fill="x", pady=(0, 8), before=self.canvas)
+        else:
+            self.poi_editor_bar.pack_forget()
+        if self.edit_places.get():
+            self.canvas.configure(cursor="crosshair" if self.placing_place_id else "fleur")
+            self.status.set("Редактор POI · ЛКМ: точка или карта · ПКМ: карта · Ctrl+S: сохранить · Ctrl+Z: отменить")
+        else:
+            self.canvas.configure(cursor="crosshair" if self.add_mode else "fleur")
+
+    def cancel_place_action(self):
+        if self.drag_place_id and self.drag_place_before is not None:
+            place = self.place_by_id(self.drag_place_id)
+            set_place_source_point(place, self.drag_place_before["source_pixel"], self.coastline,
+                                   self.drag_place_before["position_accuracy"])
+        self.drag_place_id = self.drag_place_before = self.placing_place_id = None
+        self.press = None
+
+    def escape_action(self, event=None):
+        self.cancel_place_action()
+        self.cancel_add()
+        self.refresh_place_editor()
+        self.schedule_render()
+
+    def begin_place_position(self, ident):
+        place = self.place_by_id(ident)
+        if place is None:
+            return
+        self.edit_places.set(True)
+        self.toggle_place_editor()
+        self.editing_place_id = self.placing_place_id = ident
+        self.refresh_place_editor()
+        self.schedule_render()
+
+    def undo_place_edit(self):
+        if self.drag_place_id:
+            self.cancel_place_action()
+        elif self.poi_undo:
+            ident, before = self.poi_undo.pop()
+            place = self.place_by_id(ident)
+            if place is not None:
+                set_place_source_point(place, before["source_pixel"], self.coastline, before["position_accuracy"])
+                self.editing_place_id = ident
+        self.refresh_place_editor()
+        self.schedule_render()
+
+    def save_places_edits(self):
+        if self.drag_place_id:
+            self.status.set("Сначала отпустите точку, затем сохраните POI")
+            return False
+        changes = {p["id"]: self.place_state(p) for p in self.places if p["id"] in self.poi_dirty_ids}
+        if not changes:
+            self.status.set("Правок POI для сохранения нет")
+            return True
+        try:
+            expected = {ident: state["source_pixel"] for ident, state in self.saved_place_states.items()}
+            save_place_positions(self.places_path, self.coastline, changes, expected)
+            self.places = load_places(self.places_path, self.coastline)
+        except (OSError, ValueError, UnicodeError) as exc:
+            self.status.set(f"POI не сохранены: {exc}")
+            messagebox.showerror("Ошибка сохранения POI", str(exc), parent=self.root)
+            return False
+        self.saved_place_states = {p["id"]: self.place_state(p) for p in self.places}
+        self.refresh_place_editor()
+        self.schedule_render()
+        self.status.set(f"Сохранено {len(changes)} правок POI: {self.places_path}")
+        return True
+
+    def save_shortcut(self, event=None):
+        if self.edit_places.get() or self.poi_dirty_ids:
+            self.save_places_edits()
+        else:
+            self.persist()
+        return "break"
+
+    def finish_place_edit(self):
+        if self.save_places_edits():
+            self.edit_places.set(False)
+            self.toggle_place_editor()
 
     def hit_marker(self, sx, sy):
         for marker in reversed(self.markers):
@@ -302,6 +513,9 @@ class AtlasApp:
             self.pointer_text.set("За пределами проекции")
 
     def toggle_add(self):
+        if not self.add_mode and self.edit_places.get():
+            self.edit_places.set(False)
+            self.toggle_place_editor()
         self.add_mode = not self.add_mode
         if not self.add_mode:
             self.pending_place_name = None
@@ -383,8 +597,10 @@ class AtlasApp:
         combo.pack(side="left", padx=(10, 0))
         options = tk.Frame(shell, bg=PANEL)
         options.pack(fill="x", pady=(0, 6))
-        for text, variable in (("Места на карте", self.show_places), ("Названия регионов", self.show_labels)):
-            tk.Checkbutton(options, text=text, variable=variable, command=self.schedule_render,
+        for text, variable, command in (("Места на карте", self.show_places, self.schedule_render),
+                ("Названия регионов", self.show_labels, self.schedule_render),
+                ("Редактор POI", self.edit_places, self.toggle_place_editor)):
+            tk.Checkbutton(options, text=text, variable=variable, command=command,
                            bg=PANEL, fg=TEXT, selectcolor=BG, activebackground=PANEL,
                            activeforeground=TEXT).pack(side="left", padx=(0, 15))
         list_frame = tk.Frame(shell, bg=PANEL)
@@ -412,18 +628,26 @@ class AtlasApp:
         def update_details(event=None):
             place = selected()
             if place:
+                if self.edit_places.get():
+                    self.editing_place_id = place["id"]
+                    self.refresh_place_editor()
+                    self.schedule_render()
                 details.set(f"{place['name']} · {place['region']}\n" +
-                    ("Приблизительная ручная привязка к вашему рисунку. В метках можно измерять расстояния."
+                    (("Положение исправлено вручную. Для записи в файл используйте «Сохранить POI»."
+                      if place["position_accuracy"] == "user_adjusted" else
+                      "Приблизительная привязка к рисунку. «Изменить POI» позволяет исправить положение.")
                      if place["x"] is not None else
                      "Название подтверждено источником; положение на вашем рисунке пока не установлено. "
-                     "Можно поставить пользовательскую метку вручную."))
+                     "«Изменить POI» — поставить точку и сохранить её в каталог."))
 
         def populate(*args):
             kind = next((k for k, value in KINDS.items() if value == category.get()), None)
             tree.delete(*tree.get_children())
             for place in search_places(self.places, query.get(), kind):
+                accuracy = ("не привязано" if place["x"] is None else
+                            "исправлено" if place["position_accuracy"] == "user_adjusted" else "≈ по рисунку")
                 tree.insert("", "end", iid=place["id"], values=(place["name"], place["region"],
-                    KINDS[place["kind"]], "≈ по рисунку" if place["x"] is not None else "не привязано"))
+                    KINDS[place["kind"]], accuracy))
             if initial_id and tree.exists(initial_id):
                 tree.selection_set(initial_id)
                 tree.see(initial_id)
@@ -447,8 +671,18 @@ class AtlasApp:
                 self.add_place_marker(place)
                 window.destroy()
 
+        def edit_position():
+            place = selected()
+            if place:
+                if place["x"] is not None:
+                    self.view.cx, self.view.cy = place["x"], place["y"]
+                    self.view.scale = max(self.view.scale, .08)
+                self.begin_place_position(place["id"])
+                window.destroy()
+
         self.button(actions, "К месту", focus).pack(side="left")
-        self.button(actions, "В метки / поставить вручную", add, accent=True).pack(side="left", padx=8)
+        self.button(actions, "Изменить POI", edit_position, accent=True).pack(side="left", padx=8)
+        self.button(actions, "В свои метки", add).pack(side="left")
         self.button(actions, "Источник", lambda: webbrowser.open(selected()["source"])
                     if selected() else None).pack(side="right")
         query.trace_add("write", populate)
@@ -460,7 +694,8 @@ class AtlasApp:
 
     def draw_places(self):
         self.visible_places = []
-        if not self.show_places.get():
+        editing = self.edit_places.get()
+        if not self.show_places.get() and not editing:
             return
         occupied = []
         priority = {"city": 0, "port": 1, "town": 2, "landmark": 3}
@@ -468,24 +703,28 @@ class AtlasApp:
             if place["x"] is None:
                 continue
             minimum = {"city": 0, "port": .055, "town": .055, "landmark": .11}[place["kind"]]
-            if self.view.scale < minimum:
+            if self.view.scale < minimum and not editing:
                 continue
             sx, sy = self.view.screen(place["x"], place["y"])
-            if not (12 < sx < self.view.width - 12 and 15 < sy < self.view.height - 15):
+            margin = -8 if editing else 12
+            if not (margin < sx < self.view.width - margin and margin < sy < self.view.height - margin):
                 continue
-            if any(math.hypot(*[a - b for a, b in zip(self.view.screen(m["x"], m["y"]), (sx, sy))]) < 15
+            if not editing and any(math.hypot(*[a - b for a, b in zip(self.view.screen(m["x"], m["y"]), (sx, sy))]) < 15
                    for m in self.markers):
                 continue
-            label = self.canvas.create_text(sx + 9, sy - 8, text="≈ " + place["name"],
-                fill="#c5d6c7", anchor="w", font=("DejaVu Sans", 9))
+            active = editing and place["id"] == self.editing_place_id
+            label_text = ("" if place["position_accuracy"] == "user_adjusted" else "≈ ") + place["name"]
+            label = self.canvas.create_text(sx + 9, sy - 8, text=label_text,
+                fill=GOLD if active else "#c5d6c7", anchor="w", font=("DejaVu Sans", 9))
             box = self.canvas.bbox(label)
-            if any(box[0] < b[2] + 5 and box[2] > b[0] - 5 and
+            if not active and any(box[0] < b[2] + 5 and box[2] > b[0] - 5 and
                    box[1] < b[3] + 3 and box[3] > b[1] - 3 for b in occupied):
                 self.canvas.delete(label)
-                continue
-            occupied.append(box)
-            self.canvas.create_oval(sx - 3, sy - 3, sx + 3, sy + 3,
-                                    fill="#c5d6c7", outline=BG)
+            else:
+                occupied.append(box)
+            radius = 7 if active else 5 if editing else 3
+            self.canvas.create_oval(sx - radius, sy - radius, sx + radius, sy + radius,
+                                    fill=GOLD if active else "#c5d6c7", outline=BG)
             self.visible_places.append(place)
 
     def select(self, ident):
@@ -720,6 +959,10 @@ class AtlasApp:
             "«Плавно» включает сглаживание берегов; с Pillow края дополнительно сглаживаются при отрисовке.\n"
             "«Места» — первый каталог городов, поселений и портов с приблизительной привязкой.\n"
             "Поиск мест находится в левой панели. Непривязанные места можно поставить вручную.\n\n"
+            "Спецрежим «Редактор POI» позволяет перетаскивать сами места.\n"
+            "«Изменить POI» в поиске — выбрать новую позицию щелчком.\n"
+            "Ctrl+S сохраняет каталог data/places.json, Ctrl+Z отменяет перенос, Esc отменяет установку.\n"
+            "«Готово» сохраняет и выключает редактор.\n\n"
             "Контуры извлечены из предоставленной карты 1024×1024.\n"
             "Использован исправленный контурный рисунок; прозрачность PNG учитывается.\n"
             "Замкнутые области выделены без расширения штрихов и ручных поправок.\n"
@@ -727,6 +970,13 @@ class AtlasApp:
             "Демо-метки и подписи регионов расположены приблизительно.", parent=self.root)
 
     def close(self):
+        self.cancel_place_action()
+        self.refresh_place_editor()
+        if self.poi_dirty_ids:
+            decision = messagebox.askyesnocancel("Правки POI не сохранены",
+                f"Сохранить изменения POI в {self.places_path}?", parent=self.root)
+            if decision is None or (decision and not self.save_places_edits()):
+                return
         if self.dirty and not self.persist():
             if not messagebox.askyesno("Метки не сохранены", "Закрыть приложение без сохранения изменений?",
                                        parent=self.root):

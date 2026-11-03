@@ -1,6 +1,7 @@
 """Integration checks with a real Tk window; skipped without DISPLAY on Linux."""
 
 import os
+import json
 import sys
 import tempfile
 import tkinter as tk
@@ -19,12 +20,20 @@ class UITests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / "markers.json"
+        self.places_path = Path(self.tmp.name) / "places.json"
+        catalog = json.loads((Path(__file__).resolve().parents[1] / "data/places.json").read_text(encoding="utf-8"))
+        for place in catalog["places"]:
+            if place["id"] == "nasha":
+                place["source_pixel"] = None
+                place["position_accuracy"] = "unplaced"
+        self.places_path.write_text(json.dumps(catalog, ensure_ascii=False), encoding="utf-8")
         self.root = tk.Tk()
-        self.app = AtlasApp(self.root, markers_path=self.path)
+        self.app = AtlasApp(self.root, markers_path=self.path, places_path=self.places_path)
         self.root.update()
 
     def tearDown(self):
-        self.app.close()
+        with patch("app.messagebox.askyesnocancel", return_value=False):
+            self.app.close()
         self.tmp.cleanup()
 
     def add(self, name, sx=420, sy=300):
@@ -101,6 +110,8 @@ class UITests(unittest.TestCase):
         self.assertAlmostEqual(self.app.sidebar_canvas.yview()[1], 1)
         # Every visible button must have received its requested vertical space.
         def buttons(widget):
+            if widget is self.app.poi_editor_bar and not self.app.edit_places.get():
+                return []
             result = [widget] if isinstance(widget, tk.Button) else []
             for child in widget.winfo_children():
                 result.extend(buttons(child))
@@ -132,6 +143,80 @@ class UITests(unittest.TestCase):
             self.app.render()
         self.app.show_places_dialog("mondstadt")
         self.root.update()
+
+    def enable_editor(self):
+        self.app.edit_places.set(True)
+        self.app.toggle_place_editor()
+        self.root.update()
+
+    def drag_poi(self, dx=60, dy=35):
+        place = self.app.place_by_id("mondstadt")
+        x, y = map(round, self.app.view.screen(place["x"], place["y"]))
+        self.app.canvas.event_generate("<ButtonPress-1>", x=x, y=y)
+        self.app.canvas.event_generate("<B1-Motion>", x=x+dx, y=y+dy)
+        self.app.canvas.event_generate("<ButtonRelease-1>", x=x+dx, y=y+dy)
+        self.root.update()
+
+    def test_poi_drag_is_opt_in_and_does_not_pan_or_move_user_markers(self):
+        place = self.app.place_by_id("mondstadt")
+        self.app.add_place_marker(place)
+        marker = dict(self.app.markers[0])
+        before = self.app.place_state(place)
+        file_before = self.places_path.read_bytes()
+        self.enable_editor()
+        center = (self.app.view.cx, self.app.view.cy)
+        self.drag_poi()
+        self.assertNotEqual(self.app.place_state(place), before)
+        self.assertEqual((self.app.view.cx, self.app.view.cy), center)
+        self.assertEqual(self.app.markers[0], marker)
+        self.assertEqual(self.places_path.read_bytes(), file_before)
+        self.assertIn("mondstadt", self.app.poi_dirty_ids)
+        self.app.undo_place_edit()
+        self.assertEqual(self.app.place_state(place), before)
+        self.assertFalse(self.app.poi_dirty_ids)
+
+    def test_catalog_save_reloads_moved_poi_and_ctrl_s_does_not_create_markers(self):
+        from places import load_places
+        self.enable_editor()
+        self.drag_poi()
+        expected = self.app.place_state(self.app.place_by_id("mondstadt"))
+        self.app.save_shortcut()
+        restored = next(p for p in load_places(self.places_path, self.app.coastline) if p["id"] == "mondstadt")
+        self.assertEqual(self.app.place_state(restored), expected)
+        self.assertFalse(self.app.poi_dirty_ids)
+        self.assertFalse(self.path.exists())
+
+    def test_unplaced_poi_is_added_to_catalog_without_creating_a_user_marker(self):
+        from places import load_places
+        place = next(p for p in self.app.places if p["x"] is None)
+        self.app.begin_place_position(place["id"])
+        self.root.update()
+        self.app.canvas.event_generate("<ButtonPress-1>", x=400, y=350)
+        self.app.canvas.event_generate("<ButtonRelease-1>", x=400, y=350)
+        self.root.update()
+        self.assertIsNotNone(place["source_pixel"])
+        self.assertFalse(self.app.markers)
+        self.assertTrue(self.app.save_places_edits())
+        reloaded = next(p for p in load_places(self.places_path, self.app.coastline) if p["id"] == place["id"])
+        self.assertEqual(reloaded["source_pixel"], place["source_pixel"])
+        self.assertEqual(reloaded["position_accuracy"], "user_adjusted")
+
+    def test_normal_mode_drag_pans_without_editing_places(self):
+        before = self.app.place_state(self.app.place_by_id("mondstadt"))
+        center = (self.app.view.cx, self.app.view.cy)
+        self.drag_poi()
+        self.assertEqual(self.app.place_state(self.app.place_by_id("mondstadt")), before)
+        self.assertNotEqual((self.app.view.cx, self.app.view.cy), center)
+
+    def test_editor_shows_minor_pois_and_cancelling_close_keeps_unsaved_work(self):
+        self.enable_editor()
+        self.app.render()
+        self.assertTrue(any(p["kind"] == "town" for p in self.app.visible_places))
+        self.drag_poi()
+        with patch("app.messagebox.askyesnocancel", return_value=None):
+            self.app.close()
+        self.assertTrue(self.root.winfo_exists())
+        self.assertTrue(self.app.poi_dirty_ids)
 
 
 if __name__ == "__main__":
