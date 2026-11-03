@@ -7,12 +7,16 @@ import math
 import sys
 import tkinter as tk
 import uuid
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from geometry import (KM_PER_DEGREE, WORLD_BOUNDS, Viewport, distance_km,
                       great_circle, to_latlon)
 from storage import load_markers, save_markers
+from coastline_style import smooth_coastline
+from map_renderer import CoastRenderer
+from places import KINDS, load_places, search_places
 
 ROOT = Path(__file__).resolve().parent
 BG = "#101c27"
@@ -34,11 +38,19 @@ class AtlasApp:
         self.root = root
         self.markers_path = markers_path or Path.home() / ".realsizefantasymap" / "markers.json"
         self.coastline = json.loads((ROOT / "data/coastline.json").read_text(encoding="utf-8"))
+        self.smooth_polygons = smooth_coastline(self.coastline["polygons"],
+                                               self.coastline["km_per_source_pixel"])
+        self.coast_renderer = CoastRenderer()
+        self.places = load_places(ROOT / "data/places.json", self.coastline)
+        self.visible_places = []
+        self.pending_place_name = None
         self.markers = []
         self.selected = None
         self.add_mode = False
         self.show_grid = tk.BooleanVar(value=True)
         self.show_labels = tk.BooleanVar(value=False)
+        self.show_places = tk.BooleanVar(value=True)
+        self.smooth_coast = tk.BooleanVar(value=True)
         self.view = Viewport()
         self.press = None
         self.dragged = False
@@ -121,6 +133,7 @@ class AtlasApp:
         self.add_button = self.button(sidebar, "+  Поставить метку", self.toggle_add, accent=True)
         self.add_button.pack(fill="x")
         self.label(sidebar, "Или двойной щелчок по карте", MUTED, 9).pack(pady=(7, 14))
+        self.button(sidebar, "Места · поиск и подписи", self.show_places_dialog).pack(fill="x", pady=(0, 14))
         self.label(sidebar, "02 / РАССТОЯНИЯ ОТ МЕТКИ", GOLD, 9, anchor="w").pack(fill="x")
         self.selected_text = tk.StringVar(value="Выберите точку отсчёта")
         tk.Label(sidebar, textvariable=self.selected_text, wraplength=270, justify="left",
@@ -157,7 +170,8 @@ class AtlasApp:
         self.button(toolbar, "Тейват", lambda: self.fit("teyvat")).pack(side="left")
         self.button(toolbar, "Планета", lambda: self.fit("planet")).pack(side="left", padx=6)
         self.button(toolbar, "Океан", lambda: self.fit("ocean")).pack(side="left")
-        for text, variable in (("Сетка", self.show_grid), ("Регионы", self.show_labels)):
+        for text, variable in (("Сетка", self.show_grid), ("Места", self.show_places),
+                               ("Плавно", self.smooth_coast)):
             tk.Checkbutton(toolbar, text=text, variable=variable, command=self.schedule_render,
                            fg=MUTED, bg=BG, selectcolor=PANEL, activebackground=BG,
                            activeforeground=TEXT, font=("DejaVu Sans", 9)).pack(side="left", padx=5)
@@ -245,6 +259,12 @@ class AtlasApp:
                 self.select(hit["id"])
             elif self.add_mode:
                 self.add_at(event.x, event.y)
+            else:
+                for poi in self.visible_places:
+                    px, py = self.view.screen(poi["x"], poi["y"])
+                    if math.hypot(px - event.x, py - event.y) < 10:
+                        self.show_places_dialog(poi["id"])
+                        break
         self.press = None
 
     def double_click(self, event):
@@ -283,6 +303,8 @@ class AtlasApp:
 
     def toggle_add(self):
         self.add_mode = not self.add_mode
+        if not self.add_mode:
+            self.pending_place_name = None
         self.add_button.configure(text="Отмена · Esc" if self.add_mode else "+  Поставить метку")
         self.canvas.configure(cursor="crosshair" if self.add_mode else "fleur")
         self.status.set("Щёлкните по карте, чтобы поставить метку" if self.add_mode else "Готово")
@@ -290,6 +312,7 @@ class AtlasApp:
     def cancel_add(self):
         if self.add_mode:
             self.toggle_add()
+        self.pending_place_name = None
 
     def add_at(self, sx, sy):
         if len(self.markers) >= 1000:
@@ -300,7 +323,8 @@ class AtlasApp:
             self.status.set("Выберите точку внутри прямоугольника планеты")
             return
         name = simpledialog.askstring("Новая метка", "Название (до 100 символов):",
-                                      initialvalue=f"Метка {len(self.markers) + 1}", parent=self.root)
+                                      initialvalue=self.pending_place_name or f"Метка {len(self.markers) + 1}",
+                                      parent=self.root)
         if name is None:
             return
         name = name.strip()
@@ -315,6 +339,154 @@ class AtlasApp:
 
     def selected_marker(self):
         return next((m for m in self.markers if m["id"] == self.selected), None)
+
+    def add_place_marker(self, place):
+        if place["x"] is None:
+            self.pending_place_name = place["name"]
+            if not self.add_mode:
+                self.toggle_add()
+            self.status.set(f"Укажите на карте: {place['name']}")
+            return
+        existing = next((m for m in self.markers if m["name"] == place["name"] and
+                         math.hypot(m["x"] - place["x"], m["y"] - place["y"]) < 1), None)
+        if existing:
+            self.select(existing["id"])
+            return
+        if len(self.markers) >= 1000:
+            messagebox.showinfo("Метки", "В прототипе поддерживается до 1000 меток", parent=self.root)
+            return
+        marker = {"id": str(uuid.uuid4()), "name": place["name"], "x": place["x"], "y": place["y"]}
+        self.markers.append(marker)
+        self.select(marker["id"])
+        self.persist()
+
+    def show_places_dialog(self, initial_id=None):
+        window = tk.Toplevel(self.root)
+        window.title("Места — города, поселения, порты")
+        window.geometry("820x570")
+        window.minsize(650, 430)
+        window.configure(bg=PANEL)
+        shell = tk.Frame(window, bg=PANEL, padx=16, pady=16)
+        shell.pack(fill="both", expand=True)
+        self.label(shell, "Географические места", size=16, anchor="w").pack(fill="x")
+        self.label(shell, "≈ Координаты приблизительны · названия без привязки доступны в поиске",
+                   MUTED, 9, anchor="w").pack(fill="x", pady=(4, 12))
+        controls = tk.Frame(shell, bg=PANEL)
+        controls.pack(fill="x", pady=(0, 10))
+        query = tk.StringVar()
+        entry = tk.Entry(controls, textvariable=query, bg=BG, fg=TEXT, insertbackground=TEXT,
+                         relief="flat", font=("DejaVu Sans", 11))
+        entry.pack(side="left", fill="x", expand=True, ipady=7)
+        category = tk.StringVar(value="Все виды")
+        combo = ttk.Combobox(controls, textvariable=category, state="readonly", width=15,
+                             values=["Все виды", *KINDS.values()])
+        combo.pack(side="left", padx=(10, 0))
+        options = tk.Frame(shell, bg=PANEL)
+        options.pack(fill="x", pady=(0, 6))
+        for text, variable in (("Места на карте", self.show_places), ("Названия регионов", self.show_labels)):
+            tk.Checkbutton(options, text=text, variable=variable, command=self.schedule_render,
+                           bg=PANEL, fg=TEXT, selectcolor=BG, activebackground=PANEL,
+                           activeforeground=TEXT).pack(side="left", padx=(0, 15))
+        list_frame = tk.Frame(shell, bg=PANEL)
+        list_frame.pack(fill="both", expand=True)
+        tree = ttk.Treeview(list_frame, columns=("name", "region", "kind", "position"),
+                            show="headings", selectmode="browse", height=8)
+        for column, title, width in (("name", "Название", 255), ("region", "Регион", 130),
+                                      ("kind", "Вид", 100), ("position", "Привязка", 125)):
+            tree.heading(column, text=title)
+            tree.column(column, width=width, minwidth=60)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        details = tk.StringVar(value="Поиск по русским и английским названиям, региону и виду места")
+        tk.Label(shell, textvariable=details, bg=PANEL, fg=MUTED, wraplength=750,
+                 justify="left", anchor="w", font=("DejaVu Sans", 9)).pack(fill="x", pady=10)
+        actions = tk.Frame(shell, bg=PANEL)
+        actions.pack(fill="x")
+
+        def selected():
+            ids = tree.selection()
+            return next((p for p in self.places if ids and p["id"] == ids[0]), None)
+
+        def update_details(event=None):
+            place = selected()
+            if place:
+                details.set(f"{place['name']} · {place['region']}\n" +
+                    ("Приблизительная ручная привязка к вашему рисунку. В метках можно измерять расстояния."
+                     if place["x"] is not None else
+                     "Название подтверждено источником; положение на вашем рисунке пока не установлено. "
+                     "Можно поставить пользовательскую метку вручную."))
+
+        def populate(*args):
+            kind = next((k for k, value in KINDS.items() if value == category.get()), None)
+            tree.delete(*tree.get_children())
+            for place in search_places(self.places, query.get(), kind):
+                tree.insert("", "end", iid=place["id"], values=(place["name"], place["region"],
+                    KINDS[place["kind"]], "≈ по рисунку" if place["x"] is not None else "не привязано"))
+            if initial_id and tree.exists(initial_id):
+                tree.selection_set(initial_id)
+                tree.see(initial_id)
+
+        def focus(event=None):
+            place = selected()
+            if not place:
+                return
+            if place["x"] is None:
+                update_details()
+                return
+            self.view.cx, self.view.cy = place["x"], place["y"]
+            self.view.scale = max(self.view.scale, .08)
+            self.show_places.set(True)
+            self.schedule_render()
+            window.destroy()
+
+        def add():
+            place = selected()
+            if place:
+                self.add_place_marker(place)
+                window.destroy()
+
+        self.button(actions, "К месту", focus).pack(side="left")
+        self.button(actions, "В метки / поставить вручную", add, accent=True).pack(side="left", padx=8)
+        self.button(actions, "Источник", lambda: webbrowser.open(selected()["source"])
+                    if selected() else None).pack(side="right")
+        query.trace_add("write", populate)
+        combo.bind("<<ComboboxSelected>>", populate)
+        tree.bind("<<TreeviewSelect>>", update_details)
+        tree.bind("<Double-Button-1>", focus)
+        populate()
+        entry.focus_set()
+
+    def draw_places(self):
+        self.visible_places = []
+        if not self.show_places.get():
+            return
+        occupied = []
+        priority = {"city": 0, "port": 1, "town": 2, "landmark": 3}
+        for place in sorted(self.places, key=lambda p: priority[p["kind"]]):
+            if place["x"] is None:
+                continue
+            minimum = {"city": 0, "port": .055, "town": .055, "landmark": .11}[place["kind"]]
+            if self.view.scale < minimum:
+                continue
+            sx, sy = self.view.screen(place["x"], place["y"])
+            if not (12 < sx < self.view.width - 12 and 15 < sy < self.view.height - 15):
+                continue
+            if any(math.hypot(*[a - b for a, b in zip(self.view.screen(m["x"], m["y"]), (sx, sy))]) < 15
+                   for m in self.markers):
+                continue
+            label = self.canvas.create_text(sx + 9, sy - 8, text="≈ " + place["name"],
+                fill="#c5d6c7", anchor="w", font=("DejaVu Sans", 9))
+            box = self.canvas.bbox(label)
+            if any(box[0] < b[2] + 5 and box[2] > b[0] - 5 and
+                   box[1] < b[3] + 3 and box[3] > b[1] - 3 for b in occupied):
+                self.canvas.delete(label)
+                continue
+            occupied.append(box)
+            self.canvas.create_oval(sx - 3, sy - 3, sx + 3, sy + 3,
+                                    fill="#c5d6c7", outline=BG)
+            self.visible_places.append(place)
 
     def select(self, ident):
         self.selected = ident
@@ -467,12 +639,8 @@ class AtlasApp:
         # Hemisphere boundary is a meridian, not an arbitrary distance threshold.
         x = v.screen(10_000, 0)[0]
         c.create_line(x, y1, x, y2, fill="#47606a", dash=(6, 8))
-        for ring in self.coastline["polygons"]:
-            points = [v.screen(*p) for p in ring]
-            xs, ys = zip(*points)
-            if max(xs) < 0 or min(xs) > v.width or max(ys) < 0 or min(ys) > v.height:
-                continue
-            c.create_polygon(*[n for p in points for n in p], fill=LAND, outline=COAST, width=1.2)
+        polygons = self.smooth_polygons if self.smooth_coast.get() else self.coastline["polygons"]
+        self.coast_renderer.draw(c, v, polygons, LAND, COAST, antialias=self.smooth_coast.get())
         for segment in self.coastline.get("frontiers", []):
             coords = [n for p in segment for n in v.screen(*p)]
             c.create_line(*coords, fill=LAND, width=3)
@@ -483,6 +651,7 @@ class AtlasApp:
         if self.show_labels.get():
             for text, x, y in self.coastline.get("region_labels", []):
                 c.create_text(*v.screen(x, y), text=text, fill="#bdc4ae", font=("DejaVu Sans", 9))
+        self.draw_places()
         origin = self.selected_marker()
         if origin:
             for m in self.markers:
@@ -548,6 +717,9 @@ class AtlasApp:
             "Окружность сферы = 40 000 км. Второе полушарие — океан.\n"
             "Расстояния — кратчайшие дуги большого круга, без учёта рельефа.\n"
             "Проекция искажает размеры у полюсов; зум не меняет расстояния.\n\n"
+            "«Плавно» включает сглаживание берегов; с Pillow края дополнительно сглаживаются при отрисовке.\n"
+            "«Места» — первый каталог городов, поселений и портов с приблизительной привязкой.\n"
+            "Поиск мест находится в левой панели. Непривязанные места можно поставить вручную.\n\n"
             "Контуры извлечены из предоставленной карты 1024×1024.\n"
             "Использован исправленный контурный рисунок; прозрачность PNG учитывается.\n"
             "Замкнутые области выделены без расширения штрихов и ручных поправок.\n"

@@ -107,6 +107,32 @@ class UITests(unittest.TestCase):
             return result
         self.assertTrue(all(b.winfo_ismapped() and b.winfo_height() >= 20 for b in buttons(self.root)))
 
+    def test_place_becomes_measurement_marker_without_duplicates(self):
+        place = next(p for p in self.app.places if p["id"] == "mondstadt")
+        self.app.add_place_marker(place)
+        self.app.add_place_marker(place)
+        self.assertEqual(len(self.app.markers), 1)
+        self.assertEqual(load_markers(self.path)[0]["name"], "Мондштадт")
+        unplaced = next(p for p in self.app.places if p["x"] is None)
+        self.app.add_place_marker(unplaced)
+        self.assertEqual(len(self.app.markers), 1)
+        self.assertTrue(self.app.add_mode)
+        self.assertEqual(self.app.pending_place_name, unplaced["name"])
+        self.app.cancel_add()
+
+    def test_smoothing_switch_and_tk_fallback_render(self):
+        from unittest.mock import patch
+        self.app.render()
+        self.assertTrue(self.app.smooth_coast.get())
+        self.app.smooth_coast.set(False)
+        self.app.render()
+        self.assertTrue(any(self.app.canvas.type(i) == "polygon" for i in self.app.canvas.find_all()))
+        self.app.smooth_coast.set(True)
+        with patch("map_renderer.Image", None):
+            self.app.render()
+        self.app.show_places_dialog("mondstadt")
+        self.root.update()
+
 
 if __name__ == "__main__":
     unittest.main()
